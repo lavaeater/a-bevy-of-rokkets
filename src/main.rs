@@ -1,3 +1,8 @@
+use bevy::prelude::*;
+
 fn main() {
-    println!("Hello, world!");
+    App::new()
+        .insert_resource(Msaa::Sample4)
+        .add_plugins(DefaultPlugins)
+        .run();
 }
