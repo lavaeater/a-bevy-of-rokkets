@@ -11,6 +11,5 @@ bevy_rand = "0.6.0"
 bevy_xpbd_2d = "0.4.2"
 
 
-
 [profile.dev.package."*"]
 opt-level = 3
