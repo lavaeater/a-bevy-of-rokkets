@@ -1,3 +1,4 @@
+use std::sync::{Arc, Mutex};
 use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
 use bevy::utils::hashbrown::HashMap;
@@ -15,7 +16,6 @@ fn main() {
         .run();
 }
 
-// Generic struct for storing values of any type
 struct FactStore<T> {
     values: HashMap<String, T>,
 }
@@ -41,34 +41,42 @@ impl<T> FactStore<T> {
 
 #[derive(Resource)]
 struct ValueStoreManager {
-    stores: HashMap<String, Box<dyn std::any::Any>>,
+    stores: Mutex<HashMap<String, Arc<dyn std::any::Any + Send + Sync>>>,
 }
 
 impl ValueStoreManager {
     // Create a new instance of ValueStoreManager
     fn new() -> Self {
         ValueStoreManager {
-            stores: HashMap::new(),
+            stores: Mutex::new(HashMap::new()),
         }
     }
 
     // Check if a ValueStore for the specified type exists
     fn has_store<T>(&self) -> bool {
-        self.stores.contains_key(&format!("{}", std::any::type_name::<T>()))
+        self.stores
+            .lock()
+            .unwrap()
+            .contains_key(&format!("{}", std::any::type_name::<T>()))
     }
 
     // Get a ValueStore for the specified type, creating it if necessary
-    fn get_store<T>(&mut self) -> &mut FactStore<T> {
+    fn get_store<T>(&self) -> Arc<FactStore<T>>
+        where
+            T: 'static + Send + Sync,
+    {
+        let mut stores = self.stores.lock().unwrap();
         if !self.has_store::<T>() {
-            self.stores.insert(
+            stores.insert(
                 format!("{}", std::any::type_name::<T>()),
-                Box::new(FactStore::<T>::new()),
+                Arc::new(FactStore::<T>::new()),
             );
         }
-        self.stores
-            .get_mut(&format!("{}", std::any::type_name::<T>()))
+        stores
+            .get(&format!("{}", std::any::type_name::<T>()))
             .unwrap()
-            .downcast_mut::<FactStore<T>>()
+            .clone()
+            .downcast::<FactStore<T>>()
             .unwrap()
     }
 
