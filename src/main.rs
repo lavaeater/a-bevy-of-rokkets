@@ -16,6 +16,8 @@ fn main() {
         .add_systems(Update, button_system)
         .run();
 }
+
+#[derive(Resource)]
 struct ValueStore<T> {
     values: HashMap<String, T>,
 }
@@ -64,7 +66,7 @@ impl ValueStoreManager {
     // Get a ValueStore for the specified type, creating it if necessary
     fn get_store<T>(&self) -> Arc<Mutex<ValueStore<T>>>
         where
-            T: 'static + Send + Sync,
+            T: 'static + Send + Sync + Clone,
     {
         let mut stores = self.stores.lock().unwrap();
         if !self.has_store::<T>() {
@@ -85,7 +87,7 @@ impl ValueStoreManager {
     // Store a value of type T in the ValueStore for the specified type
     fn store_value<T>(&self, key: String, value: T)
         where
-            T: 'static + Send + Sync,
+            T: 'static + Send + Sync + Clone,
     {
         let store = self.get_store::<T>();
         let mut store = store.lock().unwrap();
@@ -95,7 +97,7 @@ impl ValueStoreManager {
     // Retrieve a value of type T from the ValueStore for the specified type
     fn get_value<T>(&self, key: &str) -> Option<T>
         where
-            T: 'static + Send + Sync + std::clone::Clone,
+            T: 'static + Send + Sync + Clone,
     {
         let store = self.get_store::<T>();
         let store = store.lock().unwrap();
@@ -361,22 +363,24 @@ fn button_system(
         (Changed<Interaction>, With<Button>),
     >,
     mut text_query: Query<&mut Text>,
+   // mut storage: ResMut<ValueStoreManager>
 ) {
     for (interaction, mut color, mut border_color, children) in &mut interaction_query {
         let mut text = text_query.get_mut(children[0]).unwrap();
         match *interaction {
             Interaction::Pressed => {
+                //storage.store_value("button_pressed".to_string(), storage.get_value("button_pressed").unwrap_or(0) + 1);
                 text.sections[0].value = "Press".to_string();
                 *color = PRESSED_BUTTON.into();
                 border_color.0 = Color::RED;
             }
             Interaction::Hovered => {
-                text.sections[0].value = "Hover".to_string();
+                //text.sections[0].value = storage.get_value("button_pressed").unwrap_or(0).to_string();
                 *color = HOVERED_BUTTON.into();
                 border_color.0 = Color::WHITE;
             }
             Interaction::None => {
-                text.sections[0].value = "Button".to_string();
+                text.sections[0].value = "Press to add".to_string();
                 *color = NORMAL_BUTTON.into();
                 border_color.0 = Color::BLACK;
             }
