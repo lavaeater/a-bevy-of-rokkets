@@ -1,5 +1,5 @@
 [package]
-name = "a-bevy-of-rokkets"
+name = "rokkets"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,6 +9,9 @@ edition = "2021"
 bevy = "0.13.2"
 bevy_rand = "0.6.0"
 bevy_xpbd_2d = "0.4.2"
+quote = "1.0.36"
+syn = "2.0.60"
+factoids = { path = "factoids" }
 
 
 [profile.dev.package."*"]
