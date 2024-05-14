@@ -1,11 +1,13 @@
 use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
+use bevy::utils::hashbrown::HashMap;
 
 const X_EXTENT: f32 = 600.;
 
 fn main() {
     App::new()
         .insert_resource(Msaa::Sample4)
+        .insert_resource(ValueStoreManager::new())
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
         .add_systems(Startup, spawn_layout)
@@ -13,18 +15,78 @@ fn main() {
         .run();
 }
 
-// Example custom types implementing the Fact trait using the custom derive macro
-#[derive(Fact)]
-struct StringFact {
-    value: String,
+// Generic struct for storing values of any type
+struct FactStore<T> {
+    values: HashMap<String, T>,
 }
 
-#[derive(Fact)]
-struct Int32Fact {
-    value: i32,
+impl<T> FactStore<T> {
+    // Create a new instance of ValueStore
+    fn new() -> Self {
+        FactStore {
+            values: HashMap::new(),
+        }
+    }
+
+    // Store a value of type T in the HashMap
+    fn store_value(&mut self, key: String, value: T) {
+        self.values.insert(key, value);
+    }
+
+    // Retrieve a value of type T from the HashMap
+    fn get_value(&self, key: &str) -> Option<&T> {
+        self.values.get(key)
+    }
 }
+
+#[derive(Resource)]
+struct ValueStoreManager {
+    stores: HashMap<String, Box<dyn std::any::Any>>,
+}
+
+impl ValueStoreManager {
+    // Create a new instance of ValueStoreManager
+    fn new() -> Self {
+        ValueStoreManager {
+            stores: HashMap::new(),
+        }
+    }
+
+    // Check if a ValueStore for the specified type exists
+    fn has_store<T>(&self) -> bool {
+        self.stores.contains_key(&format!("{}", std::any::type_name::<T>()))
+    }
+
+    // Get a ValueStore for the specified type, creating it if necessary
+    fn get_store<T>(&mut self) -> &mut FactStore<T> {
+        if !self.has_store::<T>() {
+            self.stores.insert(
+                format!("{}", std::any::type_name::<T>()),
+                Box::new(FactStore::<T>::new()),
+            );
+        }
+        self.stores
+            .get_mut(&format!("{}", std::any::type_name::<T>()))
+            .unwrap()
+            .downcast_mut::<FactStore<T>>()
+            .unwrap()
+    }
+
+    // Store a value of type T in the HashMap
+    fn store_value<T>(&mut self, key: String, value: T) {
+        self.get_store().values.insert(key, value);
+    }
+
+    // Retrieve a value of type T from the HashMap
+    fn get_value<T>(&mut self, key: &str) -> Option<&T> {
+        self.get_store().get(key)
+    }
+}
+
 
 fn spawn_layout(mut commands: Commands, asset_server: Res<AssetServer>) {
+
+
     let font = asset_server.load("fonts/FiraSans-Bold.ttf");
     // Top-level grid (app frame)
     commands
