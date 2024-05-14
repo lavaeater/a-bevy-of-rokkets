@@ -2,28 +2,28 @@ use std::sync::{Arc, Mutex};
 use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
 use bevy::utils::hashbrown::HashMap;
+use bevy_xpbd_2d::parry::na::SimdRealField;
 
 const X_EXTENT: f32 = 600.;
 
 fn main() {
     App::new()
         .insert_resource(Msaa::Sample4)
-        .insert_resource(ValueStoreManager::new())
+        // .insert_resource(ValueStoreManager::new())
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
         .add_systems(Startup, spawn_layout)
         .add_systems(Update, button_system)
         .run();
 }
-
-struct FactStore<T> {
+struct ValueStore<T> {
     values: HashMap<String, T>,
 }
 
-impl<T> FactStore<T> {
+impl<T> ValueStore<T> {
     // Create a new instance of ValueStore
     fn new() -> Self {
-        FactStore {
+        ValueStore {
             values: HashMap::new(),
         }
     }
@@ -39,7 +39,7 @@ impl<T> FactStore<T> {
     }
 }
 
-#[derive(Resource)]
+// Manager struct for managing multiple ValueStore instances
 struct ValueStoreManager {
     stores: Mutex<HashMap<String, Arc<dyn std::any::Any + Send + Sync>>>,
 }
@@ -61,7 +61,8 @@ impl ValueStoreManager {
     }
 
     // Get a ValueStore for the specified type, creating it if necessary
-    fn get_store<T>(&self) -> Arc<FactStore<T>>
+    // Get a ValueStore for the specified type, creating it if necessary
+    fn get_store<T>(&self) -> Arc<Mutex<ValueStore<T>>>
         where
             T: 'static + Send + Sync,
     {
@@ -69,28 +70,38 @@ impl ValueStoreManager {
         if !self.has_store::<T>() {
             stores.insert(
                 format!("{}", std::any::type_name::<T>()),
-                Arc::new(FactStore::<T>::new()),
+                Arc::new(Mutex::new(ValueStore::<T>::new())),
             );
         }
-        stores
+        let store = stores
             .get(&format!("{}", std::any::type_name::<T>()))
             .unwrap()
             .clone()
-            .downcast::<FactStore<T>>()
-            .unwrap()
+            .downcast::<Mutex<ValueStore<T>>>()
+            .unwrap();
+        Arc::clone(&store)
     }
 
-    // Store a value of type T in the HashMap
-    fn store_value<T>(&mut self, key: String, value: T) {
-        self.get_store().values.insert(key, value);
+    // Store a value of type T in the ValueStore for the specified type
+    fn store_value<T>(&self, key: String, value: T)
+        where
+            T: 'static + Send + Sync,
+    {
+        let store = self.get_store::<T>();
+        let mut store = store.lock().unwrap();
+        store.store_value(key, value);
     }
 
-    // Retrieve a value of type T from the HashMap
-    fn get_value<T>(&mut self, key: &str) -> Option<&T> {
-        self.get_store().get(key)
+    // Retrieve a value of type T from the ValueStore for the specified type
+    fn get_value<T>(&self, key: &str) -> Option<T>
+        where
+            T: 'static + Send + Sync + std::clone::Clone,
+    {
+        let store = self.get_store::<T>();
+        let store = store.lock().unwrap();
+        store.get_value(key).cloned()
     }
 }
-
 
 fn spawn_layout(mut commands: Commands, asset_server: Res<AssetServer>) {
 
