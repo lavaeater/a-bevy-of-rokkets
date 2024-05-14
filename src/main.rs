@@ -9,7 +9,7 @@ const X_EXTENT: f32 = 600.;
 fn main() {
     App::new()
         .insert_resource(Msaa::Sample4)
-        // .insert_resource(ValueStoreManager::new())
+        .insert_resource(ValueStoreManager::new())
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
         .add_systems(Startup, spawn_layout)
@@ -39,7 +39,7 @@ impl<T> ValueStore<T> {
     }
 }
 
-// Manager struct for managing multiple ValueStore instances
+#[derive(Resource)]
 struct ValueStoreManager {
     stores: Mutex<HashMap<String, Arc<dyn std::any::Any + Send + Sync>>>,
 }
