@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
-use bevy::utils::hashbrown::HashMap;
+use bevy::utils::hashbrown::{HashMap, HashSet};
 use bevy_xpbd_2d::parry::na::SimdRealField;
 
 const X_EXTENT: f32 = 600.;
@@ -469,4 +469,157 @@ fn setup(
         });
     }
 }
+
+// Define the store structure
+struct FactStore {
+    int_facts: HashMap<String, i32>,
+    string_facts: HashMap<String, String>,
+    bool_facts: HashMap<String, bool>,
+    string_list_facts: HashMap<String, HashSet<String>>,
+}
+
+impl FactStore {
+    // Create a new instance of FactStore
+    fn new() -> Self {
+        FactStore {
+            int_facts: HashMap::new(),
+            string_facts: HashMap::new(),
+            bool_facts: HashMap::new(),
+            string_list_facts: HashMap::new(),
+        }
+    }
+
+    // Store an integer fact
+    fn store_int_fact(&mut self, key: String, value: i32) {
+        self.int_facts.insert(key, value);
+    }
+
+    // Store a string fact
+    fn store_string_fact(&mut self, key: String, value: String) {
+        self.string_facts.insert(key, value);
+    }
+
+    // Store a boolean fact
+    fn store_bool_fact(&mut self, key: String, value: bool) {
+        self.bool_facts.insert(key, value);
+    }
+
+    // Store a list of strings fact
+    fn store_string_list_fact(&mut self, key: String, value: Vec<String>) {
+        self.string_list_facts
+            .insert(key, value.into_iter().collect());
+    }
+
+    // Retrieve an integer fact
+    fn get_int_fact(&self, key: &str) -> Option<&i32> {
+        self.int_facts.get(key)
+    }
+
+    // Retrieve a string fact
+    fn get_string_fact(&self, key: &str) -> Option<&String> {
+        self.string_facts.get(key)
+    }
+
+    // Retrieve a boolean fact
+    fn get_bool_fact(&self, key: &str) -> Option<&bool> {
+        self.bool_facts.get(key)
+    }
+
+    // Retrieve a list of strings fact
+    fn get_string_list_fact(&self, key: &str) -> Option<&HashSet<String>> {
+        self.string_list_facts.get(key)
+    }
+}
+
+// Define the FactStore structure (as provided earlier)
+
+// Define a rule structure
+struct Rule {
+    conditions: Vec<Condition>,
+}
+
+// Define a condition enum to represent different types of conditions
+enum Condition {
+    StringEquals(String, String),
+    BoolEquals(String, bool),
+    ListContains(String, String),
+}
+
+impl Rule {
+    // Create a new instance of Rule
+    fn new() -> Self {
+        Rule {
+            conditions: Vec::new(),
+        }
+    }
+
+    // Add a condition to the rule
+    fn add_condition(&mut self, condition: Condition) {
+        self.conditions.push(condition);
+    }
+
+    // Evaluate the rule based on the FactStore
+    fn evaluate(&self, fact_store: &FactStore) -> bool {
+        self.conditions.iter().all(|condition| match condition {
+            Condition::StringEquals(key, value) => {
+                fact_store.get_string_fact(key).map_or(false, |fact| fact == value)
+            }
+            Condition::BoolEquals(key, value) => {
+                fact_store.get_bool_fact(key).map_or(false, |fact| fact == value)
+            }
+            Condition::ListContains(key, value) => {
+                fact_store
+                    .get_string_list_fact(key)
+                    .map_or(false, |fact| fact.contains(value))
+            }
+        })
+    }
+}
+//
+// fn main() {
+//     // Create a new FactStore and populate it with some facts
+//     let mut fact_store = FactStore::new();
+//     fact_store.store_string_fact("name".to_string(), "Alice".to_string());
+//     fact_store.store_bool_fact("is_student".to_string(), true);
+//     fact_store.store_string_list_fact(
+//         "hobbies".to_string(),
+//         vec!["reading".to_string(), "coding".to_string(), "gardening".to_string()],
+//     );
+//
+//     // Create a rule
+//     let mut rule = Rule::new();
+//     rule.add_condition(Condition::StringEquals("name".to_string(), "Alice".to_string()));
+//     rule.add_condition(Condition::BoolEquals("is_student".to_string(), true));
+//     rule.add_condition(Condition::ListContains("hobbies".to_string(), "reading".to_string()));
+//
+//     // Evaluate the rule
+//     let rule_result = rule.evaluate(&fact_store);
+//     println!("Rule evaluation result: {}", rule_result);
+// }
+
+
+//
+// fn main() {
+//     // Create a new FactStore
+//     let mut fact_store = FactStore::new();
+//
+//     // Store some sample facts
+//     fact_store.store_int_fact("age".to_string(), 30);
+//     fact_store.store_string_fact("name".to_string(), "Alice".to_string());
+//     fact_store.store_bool_fact("is_student".to_string(), true);
+//     fact_store.store_string_list_fact(
+//         "hobbies".to_string(),
+//         vec!["reading".to_string(), "coding".to_string(), "gardening".to_string()],
+//     );
+//
+//     // Retrieve and print some facts
+//     println!("Age: {:?}", fact_store.get_int_fact("age"));
+//     println!("Name: {:?}", fact_store.get_string_fact("name"));
+//     println!("Is Student: {:?}", fact_store.get_bool_fact("is_student"));
+//     println!(
+//         "Hobbies: {:?}",
+//         fact_store.get_string_list_fact("hobbies")
+//     );
+// }
+
 
