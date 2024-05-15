@@ -9,6 +9,7 @@ const X_EXTENT: f32 = 600.;
 fn main() {
     App::new()
         .insert_resource(Msaa::Sample4)
+        .insert_resource(FactStore::new())
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
         .add_systems(Startup, spawn_layout)
@@ -274,19 +275,19 @@ fn button_system(
         (Changed<Interaction>, With<Button>),
     >,
     mut text_query: Query<&mut Text>,
-   // mut storage: ResMut<ValueStoreManager>
+   mut storage: ResMut<FactStore>
 ) {
     for (interaction, mut color, mut border_color, children) in &mut interaction_query {
         let mut text = text_query.get_mut(children[0]).unwrap();
         match *interaction {
             Interaction::Pressed => {
-                //storage.store_value("button_pressed".to_string(), storage.get_value("button_pressed").unwrap_or(0) + 1);
+                storage.add_to_int("button_pressed".to_string(), 1);
                 text.sections[0].value = "Press".to_string();
                 *color = PRESSED_BUTTON.into();
                 border_color.0 = Color::RED;
             }
             Interaction::Hovered => {
-                //text.sections[0].value = storage.get_value("button_pressed").unwrap_or(0).to_string();
+                text.sections[0].value = storage.get_int("button_pressed").unwrap_or(&0).to_string();
                 *color = HOVERED_BUTTON.into();
                 border_color.0 = Color::WHITE;
             }
@@ -340,6 +341,13 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                     ));
                 });
         });
+}
+
+pub enum Fact {
+    Int(i32),
+    String(String),
+    Bool(bool),
+    StringList(Vec<String>),
 }
 
 fn setup(
@@ -401,17 +409,22 @@ impl FactStore {
     }
 
     // Store an integer fact
-    fn store_int_fact(&mut self, key: String, value: i32) {
+    fn store_int(&mut self, key: String, value: i32) {
         self.int_facts.insert(key, value);
     }
 
+    fn add_to_int(&mut self, key: String, value: i32) {
+        let current = self.get_int(&key).unwrap_or(&0);
+        self.store_int(key, current + value);
+    }
+
     // Store a string fact
-    fn store_string_fact(&mut self, key: String, value: String) {
+    fn store_string(&mut self, key: String, value: String) {
         self.string_facts.insert(key, value);
     }
 
     // Store a boolean fact
-    fn store_bool_fact(&mut self, key: String, value: bool) {
+    fn store_bool(&mut self, key: String, value: bool) {
         self.bool_facts.insert(key, value);
     }
 
@@ -422,22 +435,22 @@ impl FactStore {
     }
 
     // Retrieve an integer fact
-    fn get_int_fact(&self, key: &str) -> Option<&i32> {
+    fn get_int(&self, key: &str) -> Option<&i32> {
         self.int_facts.get(key)
     }
 
     // Retrieve a string fact
-    fn get_string_fact(&self, key: &str) -> Option<&String> {
+    fn get_string(&self, key: &str) -> Option<&String> {
         self.string_facts.get(key)
     }
 
     // Retrieve a boolean fact
-    fn get_bool_fact(&self, key: &str) -> Option<&bool> {
+    fn get_bool(&self, key: &str) -> Option<&bool> {
         self.bool_facts.get(key)
     }
 
     // Retrieve a list of strings fact
-    fn get_string_list_fact(&self, key: &str) -> Option<&HashSet<String>> {
+    fn get_list(&self, key: &str) -> Option<&HashSet<String>> {
         self.string_list_facts.get(key)
     }
 }
@@ -457,7 +470,7 @@ enum Condition {
     IntLessThan(String, i32),
     BoolEquals(String, bool),
     ListContains(String, String),
-    Invert(Condition),
+    Invert(Arc<Condition>),
 }
 
 impl Rule {
@@ -481,24 +494,24 @@ impl Rule {
     fn evaluate_condition(&self, condition: &Condition, fact_store: &FactStore) -> bool {
         match condition {
             Condition::StringEquals(key, value) => {
-                fact_store.get_string_fact(key).map_or(false, |fact| fact == value)
+                fact_store.get_string(key).map_or(false, |fact| fact == value)
             }
             Condition::BoolEquals(key, value) => {
-                fact_store.get_bool_fact(key).map_or(false, |fact| fact == value)
+                fact_store.get_bool(key).map_or(false, |fact| fact == value)
             }
             Condition::ListContains(key, value) => {
                 fact_store
-                    .get_string_list_fact(key)
+                    .get_list(key)
                     .map_or(false, |fact| fact.contains(value))
             }
             Condition::IntEquals(key, value) => {
-                fact_store.get_int_fact(key).map_or(false, |fact| fact == value)
+                fact_store.get_int(key).map_or(false, |fact| fact == value)
             }
             Condition::IntLargerThan(key, value) => {
-                fact_store.get_int_fact(key).map_or(false, |fact| fact > value)
+                fact_store.get_int(key).map_or(false, |fact| fact > value)
             }
             Condition::IntLessThan(key, value) => {
-                fact_store.get_int_fact(key).map_or(false, |fact| fact < value)
+                fact_store.get_int(key).map_or(false, |fact| fact < value)
             }
             Condition::Invert(inner_condition) => {
                 !self.evaluate_condition(inner_condition, fact_store)
