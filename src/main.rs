@@ -9,100 +9,11 @@ const X_EXTENT: f32 = 600.;
 fn main() {
     App::new()
         .insert_resource(Msaa::Sample4)
-        .insert_resource(ValueStoreManager::new())
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
         .add_systems(Startup, spawn_layout)
         .add_systems(Update, button_system)
         .run();
-}
-
-#[derive(Resource)]
-struct ValueStore<T> {
-    values: HashMap<String, T>,
-}
-
-impl<T> ValueStore<T> {
-    // Create a new instance of ValueStore
-    fn new() -> Self {
-        ValueStore {
-            values: HashMap::new(),
-        }
-    }
-
-    // Store a value of type T in the HashMap
-    fn store_value(&mut self, key: String, value: T) {
-        self.values.insert(key, value);
-    }
-
-    // Retrieve a value of type T from the HashMap
-    fn get_value(&self, key: &str) -> Option<&T> {
-        self.values.get(key)
-    }
-}
-
-#[derive(Resource)]
-struct ValueStoreManager {
-    stores: Mutex<HashMap<String, Arc<dyn std::any::Any + Send + Sync>>>,
-}
-
-impl ValueStoreManager {
-    // Create a new instance of ValueStoreManager
-    fn new() -> Self {
-        ValueStoreManager {
-            stores: Mutex::new(HashMap::new()),
-        }
-    }
-
-    // Check if a ValueStore for the specified type exists
-    fn has_store<T>(&self) -> bool {
-        self.stores
-            .lock()
-            .unwrap()
-            .contains_key(&format!("{}", std::any::type_name::<T>()))
-    }
-
-    // Get a ValueStore for the specified type, creating it if necessary
-    // Get a ValueStore for the specified type, creating it if necessary
-    fn get_store<T>(&self) -> Arc<Mutex<ValueStore<T>>>
-        where
-            T: 'static + Send + Sync + Clone,
-    {
-        let mut stores = self.stores.lock().unwrap();
-        if !self.has_store::<T>() {
-            stores.insert(
-                format!("{}", std::any::type_name::<T>()),
-                Arc::new(Mutex::new(ValueStore::<T>::new())),
-            );
-        }
-        let store = stores
-            .get(&format!("{}", std::any::type_name::<T>()))
-            .unwrap()
-            .clone()
-            .downcast::<Mutex<ValueStore<T>>>()
-            .unwrap();
-        Arc::clone(&store)
-    }
-
-    // Store a value of type T in the ValueStore for the specified type
-    fn store_value<T>(&self, key: String, value: T)
-        where
-            T: 'static + Send + Sync + Clone,
-    {
-        let store = self.get_store::<T>();
-        let mut store = store.lock().unwrap();
-        store.store_value(key, value);
-    }
-
-    // Retrieve a value of type T from the ValueStore for the specified type
-    fn get_value<T>(&self, key: &str) -> Option<T>
-        where
-            T: 'static + Send + Sync + Clone,
-    {
-        let store = self.get_store::<T>();
-        let store = store.lock().unwrap();
-        store.get_value(key).cloned()
-    }
 }
 
 fn spawn_layout(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -470,7 +381,7 @@ fn setup(
     }
 }
 
-// Define the store structure
+#[derive(Resource)]
 struct FactStore {
     int_facts: HashMap<String, i32>,
     string_facts: HashMap<String, String>,
@@ -541,8 +452,12 @@ struct Rule {
 // Define a condition enum to represent different types of conditions
 enum Condition {
     StringEquals(String, String),
+    IntEquals(String, i32),
+    IntLargerThan(String, i32),
+    IntLessThan(String, i32),
     BoolEquals(String, bool),
     ListContains(String, String),
+    Invert(Condition),
 }
 
 impl Rule {
@@ -560,7 +475,11 @@ impl Rule {
 
     // Evaluate the rule based on the FactStore
     fn evaluate(&self, fact_store: &FactStore) -> bool {
-        self.conditions.iter().all(|condition| match condition {
+        self.conditions.iter().all(|condition| self.evaluate_condition(condition, fact_store))
+    }
+
+    fn evaluate_condition(&self, condition: &Condition, fact_store: &FactStore) -> bool {
+        match condition {
             Condition::StringEquals(key, value) => {
                 fact_store.get_string_fact(key).map_or(false, |fact| fact == value)
             }
@@ -572,7 +491,19 @@ impl Rule {
                     .get_string_list_fact(key)
                     .map_or(false, |fact| fact.contains(value))
             }
-        })
+            Condition::IntEquals(key, value) => {
+                fact_store.get_int_fact(key).map_or(false, |fact| fact == value)
+            }
+            Condition::IntLargerThan(key, value) => {
+                fact_store.get_int_fact(key).map_or(false, |fact| fact > value)
+            }
+            Condition::IntLessThan(key, value) => {
+                fact_store.get_int_fact(key).map_or(false, |fact| fact < value)
+            }
+            Condition::Invert(inner_condition) => {
+                !self.evaluate_condition(inner_condition, fact_store)
+            }
+        }
     }
 }
 //
