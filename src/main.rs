@@ -344,10 +344,10 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
 }
 
 pub enum Fact {
-    Int(i32),
-    String(String),
-    Bool(bool),
-    StringList(Vec<String>),
+    Int(String, i32),
+    String(String, String),
+    Bool(String, bool),
+    StringList(String, Vec<String>),
 }
 
 fn setup(
@@ -386,6 +386,65 @@ fn setup(
             ),
             ..default()
         });
+    }
+}
+#[derive(Resource)]
+struct CoolFactStore {
+    facts: HashMap<String, Fact>,
+}
+
+impl CoolFactStore {
+    // Create a new instance of FactStore
+    fn new() -> Self {
+        CoolFactStore {
+            facts: HashMap::new(),
+        }
+    }
+
+    // Store an integer fact
+    fn store_int(&mut self, key: String, value: i32) {
+        self.facts.insert(key.clone(), Fact::Int(key, value));
+    }
+
+    fn add_to_int(&mut self, key: String, value: i32) {
+        let current = self.get_int(&key).unwrap_or(&0);
+        self.store_int(key, current + value);
+    }
+
+    // Store a string fact
+    fn store_string(&mut self, key: String, value: String) {
+        self.string_facts.insert(key, value);
+    }
+
+    // Store a boolean fact
+    fn store_bool(&mut self, key: String, value: bool) {
+        self.bool_facts.insert(key, value);
+    }
+
+    // Store a list of strings fact
+    fn store_string_list_fact(&mut self, key: String, value: Vec<String>) {
+        self.string_list_facts
+            .insert(key, value.into_iter().collect());
+    }
+
+    // Retrieve an integer fact
+    fn get_int(&self, key: &str) -> Option<&i32> {
+        self.int_facts.get(key)
+    }
+
+    // Retrieve a string fact
+    fn get_string(&self, key: &str) -> Option<&String> {
+        self.string_facts.get(key)
+    }
+
+    // Retrieve a boolean fact
+    fn get_bool(&self, key: &str) -> Option<&bool> {
+        self.bool_facts.get(key)
+    }
+
+    // Retrieve a list of strings fact
+    fn get_list(&self, key: &str) -> Option<&HashSet<String>> {
+        self.string_list_facts.get(key)
     }
 }
 
