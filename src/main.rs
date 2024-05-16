@@ -589,27 +589,37 @@ impl CoolFactStore {
 
 #[derive(Resource)]
 pub struct RuleEngine {
-    rules: Vec<Rule>
+    rules: HashMap<String, Rule>,
+    rule_states: HashMap<String, bool>
 }
 
 impl RuleEngine {
     // Constructor for RuleEngine
     pub fn new() -> Self {
         RuleEngine {
-            rules: Vec::new(),
+            rules: HashMap::new(),
+            rule_states: HashMap::new()
         }
     }
 
     // Add a new rule to the rule engine
     pub fn add_rule(&mut self, rule: Rule) {
-        self.rules.push(rule);
+        self.rule_states.insert(rule.name.clone(), false);
+        self.rules.insert(rule.name.clone(), rule);
     }
 
     // Evaluate all rules based on the provided facts
-    pub fn evaluate_rules(&self, facts: &HashMap<String, Fact>) -> Vec<(String, bool)> {
+    pub fn evaluate_rules(&self, facts: &HashMap<String, Fact>) -> HashMap<String, Rule> {
         self.rules
             .iter()
-            .map(|rule| (rule.name.clone(), rule.evaluate(facts)))
+            .for_each(|(name, rule)| {
+                let previous_state
+
+                if let Some(old_status) {  }
+                println!("Rule '{}' result: {}", name, rule.evaluate(facts));
+            });
+            .map(|(name, rule)| { (name.clone(), rule.evaluate(facts)) })
+            .into()
             .collect()
     }
 }
@@ -656,7 +666,7 @@ fn rule_evaluator(
 
 }
 
-
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Condition {
     IntEquals { fact_name: String, expected_value: i32 },
     IntGreaterThan { fact_name: String, expected_value: i32 },
@@ -705,7 +715,7 @@ impl Condition {
     }
 }
 
-// Define a Rule struct that contains multiple conditions
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Rule {
     pub name: String,
     pub conditions: Vec<Condition>,
