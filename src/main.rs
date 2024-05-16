@@ -10,16 +10,55 @@ fn main() {
     App::new()
         .insert_resource(Msaa::Sample4)
         .insert_resource(FactStore::new())
+        .add_event::<FactUpdated>()
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
         .add_systems(Startup, spawn_layout)
         .add_systems(Update, button_system)
+        .add_systems(Update, fact_update_event_broadcaster)
         .run();
 }
 
+#[derive(Event)]
+pub struct FactUpdated {
+    key: String,
+    fact: Fact
+}
+
+fn fact_update_event_broadcaster(
+    mut event_writer: EventWriter<FactUpdated>,
+    mut storage: ResMut<FactStore>,
+) {
+    for (key) in storage.changed_int_facts.drain() {
+        event_writer.send(FactUpdated {
+            key: key.clone(),
+            fact: Fact::Int(*storage.int_facts.get(&key).unwrap())
+        });
+    }
+
+    for (key) in storage.changed_string_facts.drain() {
+        event_writer.send(FactUpdated {
+            key: key.clone(),
+            fact: Fact::String(storage.string_facts.get(&key).unwrap().clone())
+        });
+    }
+
+    for (key) in storage.changed_bool_facts.drain() {
+        event_writer.send(FactUpdated {
+            key: key.clone(),
+            fact: Fact::Bool(*storage.bool_facts.get(&key).unwrap())
+        });
+    }
+
+    for (key) in storage.changed_list_facts.drain() {
+        event_writer.send(FactUpdated {
+            key: key.clone(),
+            fact: Fact::StringList(storage.list_facts.get(&key).unwrap().clone())
+        });
+    }
+}
+
 fn spawn_layout(mut commands: Commands, asset_server: Res<AssetServer>) {
-
-
     let font = asset_server.load("fonts/FiraSans-Bold.ttf");
     // Top-level grid (app frame)
     commands
@@ -245,7 +284,6 @@ fn item_rect(builder: &mut ChildBuilder, color: Color, with_button: bool, font: 
                 background_color: BackgroundColor(color),
                 ..default()
             });
-
         });
 }
 
@@ -275,7 +313,7 @@ fn button_system(
         (Changed<Interaction>, With<Button>),
     >,
     mut text_query: Query<&mut Text>,
-   mut storage: ResMut<FactStore>
+    mut storage: ResMut<FactStore>,
 ) {
     for (interaction, mut color, mut border_color, children) in &mut interaction_query {
         let mut text = text_query.get_mut(children[0]).unwrap();
@@ -347,7 +385,7 @@ pub enum Fact {
     Int(i32),
     String(String),
     Bool(bool),
-    StringList(Vec<String>),
+    StringList(HashSet<String>),
 }
 
 fn setup(
@@ -394,7 +432,11 @@ struct FactStore {
     int_facts: HashMap<String, i32>,
     string_facts: HashMap<String, String>,
     bool_facts: HashMap<String, bool>,
-    string_list_facts: HashMap<String, HashSet<String>>,
+    list_facts: HashMap<String, HashSet<String>>,
+    changed_int_facts: HashSet<String>,
+    changed_string_facts: HashSet<String>,
+    changed_bool_facts: HashSet<String>,
+    changed_list_facts: HashSet<String>,
 }
 
 impl FactStore {
@@ -404,13 +446,21 @@ impl FactStore {
             int_facts: HashMap::new(),
             string_facts: HashMap::new(),
             bool_facts: HashMap::new(),
-            string_list_facts: HashMap::new(),
+            list_facts: HashMap::new(),
+            changed_int_facts: HashSet::new(),
+            changed_string_facts: HashSet::new(),
+            changed_bool_facts: HashSet::new(),
+            changed_list_facts: HashSet::new(),
         }
     }
 
     // Store an integer fact
     fn store_int(&mut self, key: String, value: i32) {
-        self.int_facts.insert(key, value);
+        let current_value = self.get_int(&key);
+        if current_value.unwrap_or(&0) != &value {
+            self.int_facts.insert(key.clone(), value);
+            self.changed_int_facts.insert(key.clone());
+        }
     }
 
     fn add_to_int(&mut self, key: String, value: i32) {
@@ -418,20 +468,49 @@ impl FactStore {
         self.store_int(key, current + value);
     }
 
+    fn subtract_from_int(&mut self, key: String, value: i32) {
+        let current = self.get_int(&key).unwrap_or(&0);
+        self.store_int(key, current - value);
+    }
+
     // Store a string fact
     fn store_string(&mut self, key: String, value: String) {
-        self.string_facts.insert(key, value);
+        let current_value = self.get_string(&key);
+        if current_value.unwrap_or(&"".to_string()) != &value {
+            self.changed_string_facts.insert(key.clone());
+            self.changed_string_facts.insert(key.clone());
+        }
     }
 
     // Store a boolean fact
     fn store_bool(&mut self, key: String, value: bool) {
-        self.bool_facts.insert(key, value);
+        let current_value = self.get_bool(&key);
+        if current_value.unwrap_or(&false) != &value {
+            self.bool_facts.insert(key.clone(), value);
+            self.changed_bool_facts.insert(key.clone());
+        }
     }
 
     // Store a list of strings fact
-    fn store_string_list_fact(&mut self, key: String, value: Vec<String>) {
-        self.string_list_facts
-            .insert(key, value.into_iter().collect());
+    fn add_to_string_list(&mut self, key: String, value: String) {
+        if let Some(list) = self.list_facts.get_mut(&key) {
+            if list.insert(value) {
+                self.changed_list_facts.insert(key.clone());
+            }
+        } else {
+            let mut new_list = HashSet::new();
+            new_list.insert(value);
+            self.list_facts.insert(key.clone(), new_list);
+            self.changed_list_facts.insert(key.clone());
+        }
+    }
+
+    fn remove_from_string_list(&mut self, key: String, value: String) {
+        if let Some(list) = self.list_facts.get_mut(&key) {
+            if list.remove(&value) {
+                self.changed_list_facts.insert(key.clone());
+            }
+        }
     }
 
     // Retrieve an integer fact
@@ -451,7 +530,7 @@ impl FactStore {
 
     // Retrieve a list of strings fact
     fn get_list(&self, key: &str) -> Option<&HashSet<String>> {
-        self.string_list_facts.get(key)
+        self.list_facts.get(key)
     }
 }
 
