@@ -10,18 +10,26 @@ fn main() {
         .insert_resource(Msaa::Sample4)
         .insert_resource(CoolFactStore::new())
         .add_event::<FactUpdated>()
+        .add_event::<RuleUpdated>()
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
         .add_systems(Startup, spawn_layout)
+        .add_systems(Startup, setup_rules)
         .add_systems(Update, button_system)
         .add_systems(Update, fact_update_event_broadcaster)
         .add_systems(Update, event_system)
+        .add_systems(Update, rule_evaluator)
         .run();
 }
 
 #[derive(Event)]
 pub struct FactUpdated {
     fact: Fact
+}
+
+#[derive(Event)]
+pub struct RuleUpdated {
+    rule: String
 }
 
 fn fact_update_event_broadcaster(
@@ -331,51 +339,8 @@ fn button_system(
     }
 }
 
-fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
-    // ui camera
-    commands
-        .spawn(NodeBundle {
-            style: Style {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                ..default()
-            },
-            ..default()
-        })
-        .with_children(|parent| {
-            parent
-                .spawn(ButtonBundle {
-                    style: Style {
-                        width: Val::Px(150.0),
-                        height: Val::Px(65.0),
-                        border: UiRect::all(Val::Px(5.0)),
-                        // horizontally center child text
-                        justify_content: JustifyContent::Center,
-                        // vertically center child text
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    border_color: BorderColor(Color::BLACK),
-                    background_color: NORMAL_BUTTON.into(),
-                    ..default()
-                })
-                .with_children(|parent| {
-                    parent.spawn(TextBundle::from_section(
-                        "Button",
-                        TextStyle {
-                            font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                            font_size: 40.0,
-                            color: Color::rgb(0.9, 0.9, 0.9),
-                        },
-                    ));
-                });
-        });
-}
-
 #[derive(Debug, PartialEq, Eq, Clone)]
-struct StringHashSet(HashSet<String>);
+pub struct StringHashSet(HashSet<String>);
 
 impl StringHashSet {
     fn new() -> Self {
@@ -418,11 +383,6 @@ fn setup(
     commands.spawn(Camera2dBundle::default());
 
     let shapes = [
-        // Mesh2dHandle(meshes.add(Circle { radius: 50.0 })),
-        // Mesh2dHandle(meshes.add(Ellipse::new(25.0, 50.0))),
-        // Mesh2dHandle(meshes.add(Capsule2d::new(25.0, 50.0))),
-        // Mesh2dHandle(meshes.add(Rectangle::new(50.0, 100.0))),
-        // Mesh2dHandle(meshes.add(RegularPolygon::new(50.0, 6))),
         Mesh2dHandle(meshes.add(Triangle2d::new(
             Vec2::Y * 50.0,
             Vec2::new(-50.0, -50.0),
@@ -609,18 +569,18 @@ impl RuleEngine {
     }
 
     // Evaluate all rules based on the provided facts
-    pub fn evaluate_rules(&self, facts: &HashMap<String, Fact>) -> HashMap<String, Rule> {
+    pub fn evaluate_rules(&mut self, facts: &HashMap<String, Fact>) -> HashSet<String> {
+        let mut updated_rule_states = HashSet::new();
         self.rules
             .iter()
             .for_each(|(name, rule)| {
-                let previous_state
-
-                if let Some(old_status) {  }
-                println!("Rule '{}' result: {}", name, rule.evaluate(facts));
+                let previous_state = self.rule_states.get(name).unwrap();
+                if previous_state != &rule.evaluate(facts) {
+                    self.rule_states.insert(name.clone(), !previous_state);
+                    updated_rule_states.insert(name.clone());
+                }
             });
-            .map(|(name, rule)| { (name.clone(), rule.evaluate(facts)) })
-            .into()
-            .collect()
+        return updated_rule_states;
     }
 }
 
@@ -648,6 +608,7 @@ fn setup_rules() {
 
 fn rule_evaluator(
     mut rules: ResMut<RuleEngine>,
+    mut rule_updated_writer: EventWriter<RuleUpdated>,
     storage: Res<CoolFactStore>,
     mut local: Local<f32>,
     time: Res<Time>
@@ -658,8 +619,10 @@ fn rule_evaluator(
         *local = 0.0;
         let facts = &storage.facts;
         let results = rules.evaluate_rules(facts);
-        for (rule_name, result) in results {
-            println!("Rule '{}' result: {}", rule_name, result);
+        for rule_name in results {
+            rule_updated_writer.send(RuleUpdated {
+                rule: rule_name.clone()
+            });
         }
     }
 
