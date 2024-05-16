@@ -587,48 +587,30 @@ impl CoolFactStore {
     }
 }
 
-// Define the Rule struct
-pub struct Rule {
-    name: String,
-    condition: Box<dyn Fn(&HashMap<String, Fact>) -> bool>,
-}
-
-impl Rule {
-    // Constructor for Rule
-    pub fn new(name: String, condition: Box<dyn Fn(&HashMap<String, Fact>) -> bool>) -> Self {
-        Rule { name, condition }
-    }
-
-    // Evaluate the rule based on the provided facts
-    pub fn evaluate(&self, facts: &HashMap<String, Fact>) -> bool {
-        (self.condition)(facts)
-    }
-}
-
-// Define the RuleEngine struct
+#[derive(Resource)]
 pub struct RuleEngine {
-    rules: Vec<Rule>,
+    rules: Vec<Rule>
 }
 
 impl RuleEngine {
     // Constructor for RuleEngine
     pub fn new() -> Self {
-        RuleEngine { rules: Vec::new() }
+        RuleEngine {
+            rules: Vec::new(),
+        }
     }
 
-    // Add a rule to the rule engine
+    // Add a new rule to the rule engine
     pub fn add_rule(&mut self, rule: Rule) {
         self.rules.push(rule);
     }
 
     // Evaluate all rules based on the provided facts
-    pub fn evaluate_rules(&self, facts: &HashMap<String, Fact>) -> HashMap<String, bool> {
-        let mut results = HashMap::new();
-        for rule in &self.rules {
-            let result = rule.evaluate(facts);
-            results.insert(rule.name.clone(), result);
-        }
-        results
+    pub fn evaluate_rules(&self, facts: &HashMap<String, Fact>) -> Vec<(String, bool)> {
+        self.rules
+            .iter()
+            .map(|rule| (rule.name.clone(), rule.evaluate(facts)))
+            .collect()
     }
 }
 
@@ -636,44 +618,110 @@ fn setup_rules() {
     // Create a new RuleEngine
     let mut rule_engine = RuleEngine::new();
 
-    // Define some facts
-    let mut facts = HashMap::new();
-    facts.insert("age".to_string(), Fact::Int("age".to_string(), 25));
-    facts.insert("name".to_string(), Fact::String("name".to_string(), "John".to_string()));
-    facts.insert("has_car".to_string(), Fact::Bool("has_car".to_string(), true));
-
     // Define some rules
     let rule1 = Rule::new(
-        "rule1".to_string(),
-        Box::new(|facts| {
-            if let Some(Fact::Int(_, age)) = facts.get("age") {
-                *age > 18
-            } else {
-                false
-            }
-        }),
-    );
-
-    let rule2 = Rule::new(
-        "rule2".to_string(),
-        Box::new(|facts| {
-            if let Some(Fact::String(_, name)) = facts.get("name") {
-                name.starts_with("J")
-            } else {
-                false
-            }
-        }),
+        "button_pressed_rule".to_string(),
+        vec![
+            Condition::IntEquals { fact_name: "button_pressed".to_string(), expected_value: 1 },
+        ]
     );
 
     // Add rules to the rule engine
     rule_engine.add_rule(rule1);
-    rule_engine.add_rule(rule2);
 
-    // Evaluate rules based on the provided facts
-    let results = rule_engine.evaluate_rules(&facts);
-    for (rule_name, result) in results {
-        println!("Rule '{}' result: {}", rule_name, result);
+    // // Evaluate rules based on the provided facts
+    // let results = rule_engine.evaluate_rules(&facts);
+    // for (rule_name, result) in results {
+    //     println!("Rule '{}' result: {}", rule_name, result);
+    // }
+}
+
+fn rule_evaluator(
+    mut rules: ResMut<RuleEngine>,
+    storage: Res<CoolFactStore>,
+    mut local: Local<f32>,
+    time: Res<Time>
+) {
+    *local += time.delta_seconds();
+
+    if *local > 1.0 {
+        *local = 0.0;
+        let facts = &storage.facts;
+        let results = rules.evaluate_rules(facts);
+        for (rule_name, result) in results {
+            println!("Rule '{}' result: {}", rule_name, result);
+        }
     }
+
+
 }
 
 
+pub enum Condition {
+    IntEquals { fact_name: String, expected_value: i32 },
+    IntGreaterThan { fact_name: String, expected_value: i32 },
+    IntLessThan { fact_name: String, expected_value: i32 },
+    StringEquals { fact_name: String, expected_value: String },
+    BoolEquals { fact_name: String, expected_value: bool },
+    ListContains { fact_name: String, expected_value: String },
+}
+
+impl Condition {
+    // Evaluate the condition based on the provided facts
+    pub fn evaluate(&self, facts: &HashMap<String, Fact>) -> bool {
+        match self {
+            Condition::IntEquals { fact_name, expected_value } => {
+                if let Some(Fact::Int(_, value)) = facts.get(fact_name) {
+                    return *value == *expected_value;
+                }
+            }
+            Condition::StringEquals { fact_name, expected_value } => {
+                if let Some(Fact::String(_, value)) = facts.get(fact_name) {
+                    return value == expected_value;
+                }
+            }
+            Condition::BoolEquals { fact_name, expected_value } => {
+                if let Some(Fact::Bool(_, value)) = facts.get(fact_name) {
+                    return *value == *expected_value;
+                }
+            }
+            Condition::IntGreaterThan { fact_name, expected_value } => {
+                if let Some(Fact::Int(_, value)) = facts.get(fact_name) {
+                    return *value > *expected_value;
+                }
+            }
+            Condition::IntLessThan { fact_name, expected_value } => {
+                if let Some(Fact::Int(_, value)) = facts.get(fact_name) {
+                    return *value < *expected_value;
+                }
+            }
+            Condition::ListContains { fact_name, expected_value } => {
+                if let Some(Fact::StringList(_, value)) = facts.get(fact_name) {
+                    return value.0.contains(expected_value);
+                }
+            }
+        }
+        false
+    }
+}
+
+// Define a Rule struct that contains multiple conditions
+pub struct Rule {
+    pub name: String,
+    pub conditions: Vec<Condition>,
+}
+
+impl Rule {
+    // Constructor for Rule
+    pub fn new(name: String, conditions: Vec<Condition>) -> Self {
+        Rule {
+            name,
+            conditions,
+        }
+    }
+
+    // Evaluate all conditions for the rule based on the provided facts
+    pub fn evaluate(&self, facts: &HashMap<String, Fact>) -> bool {
+        self.conditions.iter().all(|condition| condition.evaluate(facts))
+    }
+}
