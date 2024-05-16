@@ -1,62 +1,43 @@
-use std::sync::{Arc, Mutex};
+use std::hash::{Hash, Hasher};
 use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
 use bevy::utils::hashbrown::{HashMap, HashSet};
-use bevy_xpbd_2d::parry::na::SimdRealField;
 
 const X_EXTENT: f32 = 600.;
 
 fn main() {
     App::new()
         .insert_resource(Msaa::Sample4)
-        .insert_resource(FactStore::new())
+        .insert_resource(CoolFactStore::new())
         .add_event::<FactUpdated>()
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
         .add_systems(Startup, spawn_layout)
         .add_systems(Update, button_system)
         .add_systems(Update, fact_update_event_broadcaster)
+        .add_systems(Update, event_system)
         .run();
 }
 
 #[derive(Event)]
 pub struct FactUpdated {
-    key: String,
     fact: Fact
 }
 
 fn fact_update_event_broadcaster(
     mut event_writer: EventWriter<FactUpdated>,
-    mut storage: ResMut<FactStore>,
+    mut storage: ResMut<CoolFactStore>,
 ) {
-    for (key) in storage.changed_int_facts.drain() {
+    for fact in storage.updated_facts.drain() {
         event_writer.send(FactUpdated {
-            key: key.clone(),
-            fact: Fact::Int(*storage.int_facts.get(&key).unwrap())
+            fact
         });
-    }
 
-    for (key) in storage.changed_string_facts.drain() {
-        event_writer.send(FactUpdated {
-            key: key.clone(),
-            fact: Fact::String(storage.string_facts.get(&key).unwrap().clone())
-        });
-    }
-
-    for (key) in storage.changed_bool_facts.drain() {
-        event_writer.send(FactUpdated {
-            key: key.clone(),
-            fact: Fact::Bool(*storage.bool_facts.get(&key).unwrap())
-        });
-    }
-
-    for (key) in storage.changed_list_facts.drain() {
-        event_writer.send(FactUpdated {
-            key: key.clone(),
-            fact: Fact::StringList(storage.list_facts.get(&key).unwrap().clone())
-        });
     }
 }
+
+#[derive(Component)]
+pub struct TextComponent;
 
 fn spawn_layout(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font = asset_server.load("fonts/FiraSans-Bold.ttf");
@@ -188,13 +169,14 @@ fn spawn_layout(mut commands: Commands, asset_server: Res<AssetServer>) {
                             ..default()
                         },
                     ));
-                    builder.spawn(TextBundle::from_section(
+                    builder.spawn((TextBundle::from_section(
                         "A paragraph of text which ought to wrap nicely. A paragraph of text which ought to wrap nicely. A paragraph of text which ought to wrap nicely. A paragraph of text which ought to wrap nicely. A paragraph of text which ought to wrap nicely. A paragraph of text which ought to wrap nicely. A paragraph of text which ought to wrap nicely.",
                         TextStyle {
                             font: font.clone(),
                             font_size: 16.0,
                             ..default()
                         },
+                    ), TextComponent
                     ));
                     builder.spawn(NodeBundle::default());
                 });
@@ -302,6 +284,17 @@ const NORMAL_BUTTON: Color = Color::rgb(0.15, 0.15, 0.15);
 const HOVERED_BUTTON: Color = Color::rgb(0.25, 0.25, 0.25);
 const PRESSED_BUTTON: Color = Color::rgb(0.35, 0.75, 0.35);
 
+fn event_system(
+    mut query: Query<&mut Text, With<TextComponent>>,
+    mut fact_update_events: EventReader<FactUpdated>,
+) {
+    for event in fact_update_events.read() {
+        for mut text in query.iter_mut() {
+            text.sections[0].value = format!("{}\n{:?}", text.sections[0].value, event.fact);
+        }
+    }
+}
+
 fn button_system(
     mut interaction_query: Query<
         (
@@ -313,7 +306,7 @@ fn button_system(
         (Changed<Interaction>, With<Button>),
     >,
     mut text_query: Query<&mut Text>,
-    mut storage: ResMut<FactStore>,
+    mut storage: ResMut<CoolFactStore>,
 ) {
     for (interaction, mut color, mut border_color, children) in &mut interaction_query {
         let mut text = text_query.get_mut(children[0]).unwrap();
@@ -381,12 +374,41 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
         });
 }
 
-pub enum Fact {
-    Int(i32),
-    String(String),
-    Bool(bool),
-    StringList(HashSet<String>),
+#[derive(Debug, PartialEq, Eq, Clone)]
+struct StringHashSet(HashSet<String>);
+
+impl StringHashSet {
+    fn new() -> Self {
+        StringHashSet(HashSet::new())
+    }
+
+    fn insert(&mut self, value: String) -> bool {
+        self.0.insert(value)
+    }
+
+    fn remove(&mut self, value: &String) -> bool {
+        self.0.remove(value)
+    }
 }
+
+impl Hash for StringHashSet {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let mut sorted: Vec<&String> = self.0.iter().collect();
+        sorted.sort();
+        for item in sorted {
+            item.hash(state);
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Fact {
+    Int(String, i32),
+    String(String, String),
+    Bool(String, bool),
+    StringList(String, StringHashSet),
+}
+
 
 fn setup(
     mut commands: Commands,
@@ -426,40 +448,35 @@ fn setup(
         });
     }
 }
-
 #[derive(Resource)]
-struct FactStore {
-    int_facts: HashMap<String, i32>,
-    string_facts: HashMap<String, String>,
-    bool_facts: HashMap<String, bool>,
-    list_facts: HashMap<String, HashSet<String>>,
-    changed_int_facts: HashSet<String>,
-    changed_string_facts: HashSet<String>,
-    changed_bool_facts: HashSet<String>,
-    changed_list_facts: HashSet<String>,
+struct CoolFactStore {
+    facts: HashMap<String, Fact>,
+    updated_facts: HashSet<Fact>,
 }
 
-impl FactStore {
+impl CoolFactStore {
     // Create a new instance of FactStore
     fn new() -> Self {
-        FactStore {
-            int_facts: HashMap::new(),
-            string_facts: HashMap::new(),
-            bool_facts: HashMap::new(),
-            list_facts: HashMap::new(),
-            changed_int_facts: HashSet::new(),
-            changed_string_facts: HashSet::new(),
-            changed_bool_facts: HashSet::new(),
-            changed_list_facts: HashSet::new(),
+        CoolFactStore {
+            facts: HashMap::new(),
+            updated_facts: HashSet::new(),
         }
     }
 
     // Store an integer fact
     fn store_int(&mut self, key: String, value: i32) {
-        let current_value = self.get_int(&key);
-        if current_value.unwrap_or(&0) != &value {
-            self.int_facts.insert(key.clone(), value);
-            self.changed_int_facts.insert(key.clone());
+        if let Some(fact) = self.facts.get_mut(&key) {
+            if let Fact::Int(_, current_value) = fact {
+                if current_value != &value {
+                    *fact = Fact::Int(key.clone(), value);
+                    self.updated_facts.insert(fact.clone());
+                }
+            } else {
+                panic!("Fact with key {} is not an integer", key)
+            }
+        } else {
+            self.facts.insert(key.clone(), Fact::Int(key.clone(), value));
+            self.updated_facts.insert(Fact::Int(key.clone(), value));
         }
     }
 
@@ -470,179 +487,193 @@ impl FactStore {
 
     fn subtract_from_int(&mut self, key: String, value: i32) {
         let current = self.get_int(&key).unwrap_or(&0);
-        self.store_int(key, current - value);
+        self.store_int(key, current + value);
     }
 
     // Store a string fact
     fn store_string(&mut self, key: String, value: String) {
-        let current_value = self.get_string(&key);
-        if current_value.unwrap_or(&"".to_string()) != &value {
-            self.changed_string_facts.insert(key.clone());
-            self.changed_string_facts.insert(key.clone());
+        if let Some(fact) = self.facts.get_mut(&key) {
+            if let Fact::String(_, current_value) = fact {
+                if current_value != &value {
+                    *fact = Fact::String(key.clone(), value.clone());
+                    self.updated_facts.insert(fact.clone());
+                }
+            } else {
+                panic!("Fact with key {} is not a string", key)
+            }
+        } else {
+            self.facts.insert(key.clone(), Fact::String(key.clone(), value.clone()));
+            self.updated_facts.insert(Fact::String(key.clone(), value.clone()));
         }
     }
 
     // Store a boolean fact
     fn store_bool(&mut self, key: String, value: bool) {
-        let current_value = self.get_bool(&key);
-        if current_value.unwrap_or(&false) != &value {
-            self.bool_facts.insert(key.clone(), value);
-            self.changed_bool_facts.insert(key.clone());
+        if let Some(fact) = self.facts.get_mut(&key) {
+            if let Fact::Bool(_, current_value) = fact {
+                if current_value != &value {
+                    *fact = Fact::Bool(key.clone(), value);
+                    self.updated_facts.insert(fact.clone());
+                }
+            } else {
+                panic!("Fact with key {} is not a boolean", key)
+            }
+        } else {
+            self.facts.insert(key.clone(), Fact::Bool(key.clone(), value.clone()));
+            self.updated_facts.insert(Fact::Bool(key.clone(), value.clone()));
         }
     }
 
     // Store a list of strings fact
-    fn add_to_string_list(&mut self, key: String, value: String) {
-        if let Some(list) = self.list_facts.get_mut(&key) {
-            if list.insert(value) {
-                self.changed_list_facts.insert(key.clone());
+    fn add_to_list(&mut self, key: String, value: String) {
+        if let Some(list_fact) = self.facts.get_mut(&key) {
+            if let Fact::StringList(_, list) = list_fact {
+                if list.insert(value) {
+                    self.updated_facts.insert(list_fact.clone());
+                }
             }
         } else {
-            let mut new_list = HashSet::new();
+            let mut new_list = StringHashSet::new();
             new_list.insert(value);
-            self.list_facts.insert(key.clone(), new_list);
-            self.changed_list_facts.insert(key.clone());
+            self.facts.insert(key.clone(), Fact::StringList(key.clone(), new_list.clone()));
+            self.updated_facts.insert(Fact::StringList(key.clone(), new_list.clone()));
         }
     }
 
-    fn remove_from_string_list(&mut self, key: String, value: String) {
-        if let Some(list) = self.list_facts.get_mut(&key) {
-            if list.remove(&value) {
-                self.changed_list_facts.insert(key.clone());
+    fn remove_from_list(&mut self, key: String, value: String) {
+        if let Some(list_fact) = self.facts.get_mut(&key) {
+            if let Fact::StringList(_, list) = list_fact {
+                if list.remove(&value) {
+                    self.updated_facts.insert(list_fact.clone());
+                }
             }
         }
     }
 
     // Retrieve an integer fact
     fn get_int(&self, key: &str) -> Option<&i32> {
-        self.int_facts.get(key)
+        return if let Some(Fact::Int(_, value)) = self.facts.get(key) {
+            Some(&value)
+        } else {
+            None
+        }
     }
 
     // Retrieve a string fact
     fn get_string(&self, key: &str) -> Option<&String> {
-        self.string_facts.get(key)
+        return if let Some(Fact::String(_, value)) = self.facts.get(key) {
+            Some(&value)
+        } else {
+            None
+        }
     }
 
     // Retrieve a boolean fact
     fn get_bool(&self, key: &str) -> Option<&bool> {
-        self.bool_facts.get(key)
+        return if let Some(Fact::Bool(_, value)) = self.facts.get(key) {
+            Some(&value)
+        } else {
+            None
+        }
     }
 
     // Retrieve a list of strings fact
-    fn get_list(&self, key: &str) -> Option<&HashSet<String>> {
-        self.list_facts.get(key)
+    fn get_list(&self, key: &str) -> Option<&StringHashSet> {
+        return if let Some(Fact::StringList(_, value)) = self.facts.get(key) {
+            Some(&value)
+        } else {
+            None
+        }
     }
 }
 
-// Define the FactStore structure (as provided earlier)
-
-// Define a rule structure
-struct Rule {
-    conditions: Vec<Condition>,
-}
-
-// Define a condition enum to represent different types of conditions
-enum Condition {
-    StringEquals(String, String),
-    IntEquals(String, i32),
-    IntLargerThan(String, i32),
-    IntLessThan(String, i32),
-    BoolEquals(String, bool),
-    ListContains(String, String),
-    Invert(Arc<Condition>),
+// Define the Rule struct
+pub struct Rule {
+    name: String,
+    condition: Box<dyn Fn(&HashMap<String, Fact>) -> bool>,
 }
 
 impl Rule {
-    // Create a new instance of Rule
-    fn new() -> Self {
-        Rule {
-            conditions: Vec::new(),
-        }
+    // Constructor for Rule
+    pub fn new(name: String, condition: Box<dyn Fn(&HashMap<String, Fact>) -> bool>) -> Self {
+        Rule { name, condition }
     }
 
-    // Add a condition to the rule
-    fn add_condition(&mut self, condition: Condition) {
-        self.conditions.push(condition);
-    }
-
-    // Evaluate the rule based on the FactStore
-    fn evaluate(&self, fact_store: &FactStore) -> bool {
-        self.conditions.iter().all(|condition| self.evaluate_condition(condition, fact_store))
-    }
-
-    fn evaluate_condition(&self, condition: &Condition, fact_store: &FactStore) -> bool {
-        match condition {
-            Condition::StringEquals(key, value) => {
-                fact_store.get_string(key).map_or(false, |fact| fact == value)
-            }
-            Condition::BoolEquals(key, value) => {
-                fact_store.get_bool(key).map_or(false, |fact| fact == value)
-            }
-            Condition::ListContains(key, value) => {
-                fact_store
-                    .get_list(key)
-                    .map_or(false, |fact| fact.contains(value))
-            }
-            Condition::IntEquals(key, value) => {
-                fact_store.get_int(key).map_or(false, |fact| fact == value)
-            }
-            Condition::IntLargerThan(key, value) => {
-                fact_store.get_int(key).map_or(false, |fact| fact > value)
-            }
-            Condition::IntLessThan(key, value) => {
-                fact_store.get_int(key).map_or(false, |fact| fact < value)
-            }
-            Condition::Invert(inner_condition) => {
-                !self.evaluate_condition(inner_condition, fact_store)
-            }
-        }
+    // Evaluate the rule based on the provided facts
+    pub fn evaluate(&self, facts: &HashMap<String, Fact>) -> bool {
+        (self.condition)(facts)
     }
 }
-//
-// fn main() {
-//     // Create a new FactStore and populate it with some facts
-//     let mut fact_store = FactStore::new();
-//     fact_store.store_string_fact("name".to_string(), "Alice".to_string());
-//     fact_store.store_bool_fact("is_student".to_string(), true);
-//     fact_store.store_string_list_fact(
-//         "hobbies".to_string(),
-//         vec!["reading".to_string(), "coding".to_string(), "gardening".to_string()],
-//     );
-//
-//     // Create a rule
-//     let mut rule = Rule::new();
-//     rule.add_condition(Condition::StringEquals("name".to_string(), "Alice".to_string()));
-//     rule.add_condition(Condition::BoolEquals("is_student".to_string(), true));
-//     rule.add_condition(Condition::ListContains("hobbies".to_string(), "reading".to_string()));
-//
-//     // Evaluate the rule
-//     let rule_result = rule.evaluate(&fact_store);
-//     println!("Rule evaluation result: {}", rule_result);
-// }
 
+// Define the RuleEngine struct
+pub struct RuleEngine {
+    rules: Vec<Rule>,
+}
 
-//
-// fn main() {
-//     // Create a new FactStore
-//     let mut fact_store = FactStore::new();
-//
-//     // Store some sample facts
-//     fact_store.store_int_fact("age".to_string(), 30);
-//     fact_store.store_string_fact("name".to_string(), "Alice".to_string());
-//     fact_store.store_bool_fact("is_student".to_string(), true);
-//     fact_store.store_string_list_fact(
-//         "hobbies".to_string(),
-//         vec!["reading".to_string(), "coding".to_string(), "gardening".to_string()],
-//     );
-//
-//     // Retrieve and print some facts
-//     println!("Age: {:?}", fact_store.get_int_fact("age"));
-//     println!("Name: {:?}", fact_store.get_string_fact("name"));
-//     println!("Is Student: {:?}", fact_store.get_bool_fact("is_student"));
-//     println!(
-//         "Hobbies: {:?}",
-//         fact_store.get_string_list_fact("hobbies")
-//     );
-// }
+impl RuleEngine {
+    // Constructor for RuleEngine
+    pub fn new() -> Self {
+        RuleEngine { rules: Vec::new() }
+    }
+
+    // Add a rule to the rule engine
+    pub fn add_rule(&mut self, rule: Rule) {
+        self.rules.push(rule);
+    }
+
+    // Evaluate all rules based on the provided facts
+    pub fn evaluate_rules(&self, facts: &HashMap<String, Fact>) -> HashMap<String, bool> {
+        let mut results = HashMap::new();
+        for rule in &self.rules {
+            let result = rule.evaluate(facts);
+            results.insert(rule.name.clone(), result);
+        }
+        results
+    }
+}
+
+fn setup_rules() {
+    // Create a new RuleEngine
+    let mut rule_engine = RuleEngine::new();
+
+    // Define some facts
+    let mut facts = HashMap::new();
+    facts.insert("age".to_string(), Fact::Int("age".to_string(), 25));
+    facts.insert("name".to_string(), Fact::String("name".to_string(), "John".to_string()));
+    facts.insert("has_car".to_string(), Fact::Bool("has_car".to_string(), true));
+
+    // Define some rules
+    let rule1 = Rule::new(
+        "rule1".to_string(),
+        Box::new(|facts| {
+            if let Some(Fact::Int(_, age)) = facts.get("age") {
+                *age > 18
+            } else {
+                false
+            }
+        }),
+    );
+
+    let rule2 = Rule::new(
+        "rule2".to_string(),
+        Box::new(|facts| {
+            if let Some(Fact::String(_, name)) = facts.get("name") {
+                name.starts_with("J")
+            } else {
+                false
+            }
+        }),
+    );
+
+    // Add rules to the rule engine
+    rule_engine.add_rule(rule1);
+    rule_engine.add_rule(rule2);
+
+    // Evaluate rules based on the provided facts
+    let results = rule_engine.evaluate_rules(&facts);
+    for (rule_name, result) in results {
+        println!("Rule '{}' result: {}", rule_name, result);
+    }
+}
 
 
