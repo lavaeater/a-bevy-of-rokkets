@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::hash::{Hash, Hasher};
 use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
@@ -17,7 +19,8 @@ fn main() {
         .add_systems(Startup, setup_rules)
         .add_systems(Update, button_system)
         .add_systems(Update, fact_update_event_broadcaster)
-        .add_systems(Update, event_system)
+        .add_systems(Update, fact_event_system)
+        .add_systems(Update, rule_event_system)
         .add_systems(Update, rule_evaluator)
         .run();
 }
@@ -292,7 +295,7 @@ const NORMAL_BUTTON: Color = Color::rgb(0.15, 0.15, 0.15);
 const HOVERED_BUTTON: Color = Color::rgb(0.25, 0.25, 0.25);
 const PRESSED_BUTTON: Color = Color::rgb(0.35, 0.75, 0.35);
 
-fn event_system(
+fn fact_event_system(
     mut query: Query<&mut Text, With<TextComponent>>,
     mut fact_update_events: EventReader<FactUpdated>,
 ) {
@@ -302,6 +305,18 @@ fn event_system(
         }
     }
 }
+
+fn rule_event_system(
+    mut query: Query<&mut Text, With<TextComponent>>,
+    mut rule_updated_events: EventReader<RuleUpdated>,
+) {
+    for event in rule_updated_events.read() {
+        for mut text in query.iter_mut() {
+            text.sections[0].value = format!("{}\n{:?}", text.sections[0].value, event.rule);
+        }
+    }
+}
+
 
 fn button_system(
     mut interaction_query: Query<
@@ -413,6 +428,7 @@ struct CoolFactStore {
     facts: HashMap<String, Fact>,
     updated_facts: HashSet<Fact>,
 }
+
 
 impl CoolFactStore {
     // Create a new instance of FactStore
@@ -592,18 +608,11 @@ fn setup_rules() {
     let rule1 = Rule::new(
         "button_pressed_rule".to_string(),
         vec![
-            Condition::IntEquals { fact_name: "button_pressed".to_string(), expected_value: 1 },
+            Condition::IntMoreThan { fact_name: "button_pressed".to_string(), expected_value: 10 },
         ]
     );
 
-    // Add rules to the rule engine
     rule_engine.add_rule(rule1);
-
-    // // Evaluate rules based on the provided facts
-    // let results = rule_engine.evaluate_rules(&facts);
-    // for (rule_name, result) in results {
-    //     println!("Rule '{}' result: {}", rule_name, result);
-    // }
 }
 
 fn rule_evaluator(
@@ -632,7 +641,7 @@ fn rule_evaluator(
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Condition {
     IntEquals { fact_name: String, expected_value: i32 },
-    IntGreaterThan { fact_name: String, expected_value: i32 },
+    IntMoreThan { fact_name: String, expected_value: i32 },
     IntLessThan { fact_name: String, expected_value: i32 },
     StringEquals { fact_name: String, expected_value: String },
     BoolEquals { fact_name: String, expected_value: bool },
@@ -658,7 +667,7 @@ impl Condition {
                     return *value == *expected_value;
                 }
             }
-            Condition::IntGreaterThan { fact_name, expected_value } => {
+            Condition::IntMoreThan { fact_name, expected_value } => {
                 if let Some(Fact::Int(_, value)) = facts.get(fact_name) {
                     return *value > *expected_value;
                 }
