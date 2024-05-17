@@ -702,3 +702,91 @@ impl Rule {
         self.conditions.iter().all(|condition| condition.evaluate(facts))
     }
 }
+
+// Define a StoryBeat struct
+pub struct StoryBeat {
+    pub name: String,
+    pub rules: Vec<Rule>,
+    pub finished: bool,
+}
+
+impl StoryBeat {
+    // Constructor for StoryBeat
+    pub fn new(name: String, rules: Vec<Rule>) -> Self {
+        StoryBeat {
+            name,
+            rules,
+            finished: false,
+        }
+    }
+
+    // Evaluate all rules for the story beat based on the provided facts
+    pub fn evaluate(&mut self, facts: &HashMap<String, Fact>) {
+        self.finished = self.rules.iter().all(|rule| rule.evaluate(facts));
+    }
+}
+
+// Define a Story struct
+pub struct Story {
+    pub name: String,
+    pub beats: Vec<StoryBeat>,
+    pub active_beat_index: usize,
+}
+
+impl Story {
+    // Constructor for Story
+    pub fn new(name: String, beats: Vec<StoryBeat>) -> Self {
+        Story {
+            name,
+            beats,
+            active_beat_index: 0,
+        }
+    }
+
+    // Evaluate the active story beat
+    pub fn evaluate_active_beat(&mut self, facts: &HashMap<String, Fact>) {
+        if self.active_beat_index < self.beats.len() {
+            let active_beat = &mut self.beats[self.active_beat_index];
+            active_beat.evaluate(facts);
+            if active_beat.finished {
+                self.active_beat_index += 1;
+            }
+        }
+    }
+
+    // Check if the story is finished
+    pub fn is_finished(&self) -> bool {
+        self.active_beat_index >= self.beats.len()
+    }
+}
+
+// Define a StoryEngine struct
+pub struct StoryEngine {
+    pub stories: Vec<Story>,
+}
+
+impl StoryEngine {
+    // Constructor for StoryEngine
+    pub fn new() -> Self {
+        StoryEngine {
+            stories: Vec::new(),
+        }
+    }
+
+    // Add a story to the story engine
+    pub fn add_story(&mut self, story: Story) {
+        self.stories.push(story);
+    }
+
+    // Evaluate all stories based on the provided facts
+    pub fn evaluate_stories(&mut self, facts: &HashMap<String, Fact>) {
+        for story in &mut self.stories {
+            story.evaluate_active_beat(facts);
+        }
+    }
+
+    // Check if all stories are finished
+    pub fn all_stories_finished(&self) -> bool {
+        self.stories.iter().all(|story| story.is_finished())
+    }
+}
