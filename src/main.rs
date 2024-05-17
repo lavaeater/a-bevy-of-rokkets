@@ -2,6 +2,7 @@
 
 use std::hash::{Hash, Hasher};
 use bevy::prelude::*;
+use bevy::reflect::erased_serde::__private::serde::{Deserialize, Serialize};
 use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
 use bevy::utils::hashbrown::{HashMap, HashSet};
 
@@ -12,6 +13,7 @@ fn main() {
         .insert_resource(Msaa::Sample4)
         .insert_resource(CoolFactStore::new())
         .insert_resource(RuleEngine::new())
+        .insert_resource(StoryEngine::new())
         .add_event::<FactUpdated>()
         .add_event::<RuleUpdated>()
         .add_plugins(DefaultPlugins)
@@ -354,7 +356,7 @@ fn button_system(
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
 pub struct StringHashSet(HashSet<String>);
 
 impl StringHashSet {
@@ -381,7 +383,7 @@ impl Hash for StringHashSet {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum Fact {
     Int(String, i32),
     String(String, String),
@@ -424,7 +426,7 @@ fn setup(
     }
 }
 
-#[derive(Resource)]
+#[derive(Resource, Deserialize, Serialize)]
 struct CoolFactStore {
     facts: HashMap<String, Fact>,
     updated_facts: HashSet<Fact>,
@@ -564,7 +566,7 @@ impl CoolFactStore {
     }
 }
 
-#[derive(Resource)]
+#[derive(Resource, Deserialize, Serialize)]
 pub struct RuleEngine {
     rules: HashMap<String, Rule>,
     rule_states: HashMap<String, bool>,
@@ -633,7 +635,7 @@ fn rule_evaluator(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum Condition {
     IntEquals { fact_name: String, expected_value: i32 },
     IntMoreThan { fact_name: String, expected_value: i32 },
@@ -682,7 +684,7 @@ impl Condition {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct Rule {
     pub name: String,
     pub conditions: Vec<Condition>,
@@ -703,7 +705,7 @@ impl Rule {
     }
 }
 
-// Define a StoryBeat struct
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct StoryBeat {
     pub name: String,
     pub rules: Vec<Rule>,
@@ -726,7 +728,7 @@ impl StoryBeat {
     }
 }
 
-// Define a Story struct
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct Story {
     pub name: String,
     pub beats: Vec<StoryBeat>,
@@ -760,7 +762,7 @@ impl Story {
     }
 }
 
-#[derive(Resource)]
+#[derive(Resource,Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct StoryEngine {
     pub stories: Vec<Story>,
 }
@@ -843,13 +845,5 @@ fn setup_stories(
         vec![beat1, beat2, beat3],
     );
 
-    // Create a story engine and add the story to it
-    let mut story_engine = StoryEngine::new();
     story_engine.add_story(story);
-
-    // Evaluate the stories based on the provided facts
-    story_engine.evaluate_stories(&facts);
-
-    // Check if all stories are finished
-    println!("All stories finished: {}", story_engine.all_stories_finished());
-    )
+}

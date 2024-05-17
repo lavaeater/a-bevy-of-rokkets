@@ -7,6 +7,8 @@ edition = "2021"
 
 [dependencies]
 bevy = "0.13.2"
+ron = "*"
+serde = "*"
 bevy_rand = "0.6.0"
 bevy_xpbd_2d = "0.4.2"
 quote = "1.0.36"
