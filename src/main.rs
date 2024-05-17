@@ -760,7 +760,7 @@ impl Story {
     }
 }
 
-// Define a StoryEngine struct
+#[derive(Resource)]
 pub struct StoryEngine {
     pub stories: Vec<Story>,
 }
@@ -790,3 +790,66 @@ impl StoryEngine {
         self.stories.iter().all(|story| story.is_finished())
     }
 }
+
+fn setup_stories(
+    mut story_engine: ResMut<StoryEngine>,
+    mut cool_fact_store: ResMut<CoolFactStore>,
+) {
+    cool_fact_store.store_int("age".to_string(), 25);
+    cool_fact_store.store_string("name".to_string(), "John".to_string());
+    cool_fact_store.store_bool("has_car".to_string(), true);
+
+    // Define some rules
+    let rule1 = Rule::new(
+        "rule1".to_string(),
+        vec![
+            Condition::IntEquals { fact_name: "age".to_string(), expected_value: 25 },
+        ],
+    );
+
+    let rule2 = Rule::new(
+        "rule2".to_string(),
+        vec![
+            Condition::StringEquals { fact_name: "name".to_string(), expected_value: "John".to_string() },
+        ],
+    );
+
+    let rule3 = Rule::new(
+        "rule3".to_string(),
+        vec![
+            Condition::BoolEquals { fact_name: "has_car".to_string(), expected_value: true },
+        ],
+    );
+
+    // Define some story beats
+    let beat1 = StoryBeat::new(
+        "beat1".to_string(),
+        vec![rule1],
+    );
+
+    let beat2 = StoryBeat::new(
+        "beat2".to_string(),
+        vec![rule2],
+    );
+
+    let beat3 = StoryBeat::new(
+        "beat3".to_string(),
+        vec![rule3],
+    );
+
+    // Define a story with the beats
+    let story = Story::new(
+        "story1".to_string(),
+        vec![beat1, beat2, beat3],
+    );
+
+    // Create a story engine and add the story to it
+    let mut story_engine = StoryEngine::new();
+    story_engine.add_story(story);
+
+    // Evaluate the stories based on the provided facts
+    story_engine.evaluate_stories(&facts);
+
+    // Check if all stories are finished
+    println!("All stories finished: {}", story_engine.all_stories_finished());
+    )
