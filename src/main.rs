@@ -11,6 +11,7 @@ fn main() {
     App::new()
         .insert_resource(Msaa::Sample4)
         .insert_resource(CoolFactStore::new())
+        .insert_resource(RuleEngine::new())
         .add_event::<FactUpdated>()
         .add_event::<RuleUpdated>()
         .add_plugins(DefaultPlugins)
@@ -27,12 +28,12 @@ fn main() {
 
 #[derive(Event)]
 pub struct FactUpdated {
-    fact: Fact
+    fact: Fact,
 }
 
 #[derive(Event)]
 pub struct RuleUpdated {
-    rule: String
+    rule: String,
 }
 
 fn fact_update_event_broadcaster(
@@ -43,7 +44,6 @@ fn fact_update_event_broadcaster(
         event_writer.send(FactUpdated {
             fact
         });
-
     }
 }
 
@@ -423,6 +423,7 @@ fn setup(
         });
     }
 }
+
 #[derive(Resource)]
 struct CoolFactStore {
     facts: HashMap<String, Fact>,
@@ -532,7 +533,7 @@ impl CoolFactStore {
             Some(&value)
         } else {
             None
-        }
+        };
     }
 
     // Retrieve a string fact
@@ -541,7 +542,7 @@ impl CoolFactStore {
             Some(&value)
         } else {
             None
-        }
+        };
     }
 
     // Retrieve a boolean fact
@@ -550,7 +551,7 @@ impl CoolFactStore {
             Some(&value)
         } else {
             None
-        }
+        };
     }
 
     // Retrieve a list of strings fact
@@ -559,14 +560,14 @@ impl CoolFactStore {
             Some(&value)
         } else {
             None
-        }
+        };
     }
 }
 
 #[derive(Resource)]
 pub struct RuleEngine {
     rules: HashMap<String, Rule>,
-    rule_states: HashMap<String, bool>
+    rule_states: HashMap<String, bool>,
 }
 
 impl RuleEngine {
@@ -574,7 +575,7 @@ impl RuleEngine {
     pub fn new() -> Self {
         RuleEngine {
             rules: HashMap::new(),
-            rule_states: HashMap::new()
+            rule_states: HashMap::new(),
         }
     }
 
@@ -600,16 +601,14 @@ impl RuleEngine {
     }
 }
 
-fn setup_rules() {
-    // Create a new RuleEngine
-    let mut rule_engine = RuleEngine::new();
-
-    // Define some rules
+fn setup_rules(
+    mut rule_engine: ResMut<RuleEngine>,
+) {
     let rule1 = Rule::new(
         "button_pressed_rule".to_string(),
         vec![
-            Condition::IntMoreThan { fact_name: "button_pressed".to_string(), expected_value: 10 },
-        ]
+            Condition::IntMoreThan { fact_name: "button_pressed".to_string(), expected_value: 5 },
+        ],
     );
 
     rule_engine.add_rule(rule1);
@@ -617,15 +616,13 @@ fn setup_rules() {
 
 fn rule_evaluator(
     mut rules: ResMut<RuleEngine>,
+    mut fact_updated: EventReader<FactUpdated>,
     mut rule_updated_writer: EventWriter<RuleUpdated>,
     storage: Res<CoolFactStore>,
-    mut local: Local<f32>,
-    time: Res<Time>
 ) {
-    *local += time.delta_seconds();
-
-    if *local > 1.0 {
-        *local = 0.0;
+    // we obviously only update when facts are updated. In future, only update rules
+    // that are affected by the updated facts
+    for _ in fact_updated.read() {
         let facts = &storage.facts;
         let results = rules.evaluate_rules(facts);
         for rule_name in results {
@@ -634,8 +631,6 @@ fn rule_evaluator(
             });
         }
     }
-
-
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
